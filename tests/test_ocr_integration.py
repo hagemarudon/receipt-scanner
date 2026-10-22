@@ -12,7 +12,7 @@ from scantext.ocr import OcrEngine, OcrError
 from scantext.processor import process_file
 from scantext.settings import Settings
 
-from .conftest import render_lines, requires_jp_font, requires_tesseract
+from .conftest import render_lines, render_vertical, requires_jp_font, requires_tesseract, requires_vertical
 
 pytestmark = [pytest.mark.tesseract, requires_tesseract, requires_jp_font]
 
@@ -103,3 +103,12 @@ def test_cli_reports_bad_files_but_continues(tmp_path, capsys):
     assert cli_main([str(tmp_path / "bad.jpg"), str(tmp_path / "good.jpg")]) == 1
     assert (tmp_path / "good.txt").exists()
     assert "bad.jpg" in capsys.readouterr().err
+
+
+@requires_vertical
+def test_reads_vertical_japanese_in_order():
+    lines = ["診療情報提供書", "患者氏名山田太郎様", "令和六年四月一日に受診されました。"]
+    result = OcrEngine(lang="jpn_vert").recognize(PageImage(render_vertical(lines), 300))
+    for line in lines:
+        assert line in result.text
+    assert [row[0] for row in result.rows] == lines

@@ -107,3 +107,24 @@ def test_format_choice_enables_only_relevant_options(app):
     app.format_var.set("txt")
     app._sync_widgets()
     assert str(app.pdf_mode_box["state"]) == "disabled"
+
+
+def test_start_again_after_changing_format_reruns_done_files(app, sample_jpg, monkeypatch):
+    """完了後に形式を変えて「開始」したら、もう一度処理できる (以前は何も起きなかった)。"""
+    monkeypatch.setattr(gui, "OcrEngine", lambda *a, **k: FakeEngine())
+    app.add_paths([str(sample_jpg)])
+    app.start()
+    _wait_until_finished(app)
+    monkeypatch.setattr(gui.messagebox, "askyesno", lambda *a: True)
+    app.format_var.set("csv")
+    app.start()
+    _wait_until_finished(app)
+    assert sample_jpg.with_suffix(".txt").exists()
+    assert sample_jpg.with_suffix(".csv").exists()
+
+
+def test_start_with_no_files_shows_message(app, monkeypatch):
+    shown = []
+    monkeypatch.setattr(gui.messagebox, "showinfo", lambda title, message: shown.append(message))
+    app.start()
+    assert shown and not app._running

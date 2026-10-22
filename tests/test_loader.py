@@ -81,3 +81,26 @@ def test_password_pdf(tmp_path):
         doc.save(path, encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="secret", owner_pw="secret")
     with pytest.raises(LoadError, match="パスワード"):
         list(iter_pages(path))
+
+
+def test_16bit_grayscale_keeps_gray_levels(tmp_path):
+    """16 ビットのスキャンで、中間の濃さが真っ白にならない (以前は薄い文字が消えていた)。"""
+    path = tmp_path / "gray16.tif"
+    image = Image.new("I;16", (1600, 100), 65535)
+    image.paste(Image.new("I;16", (1600, 50), 30000), (0, 0))
+    image.save(path)
+    page = next(iter_pages(path))
+    assert page.image.mode == "L"
+    assert 100 < page.image.getpixel((10, 10)) < 140  # 30000/65535 ≒ 117
+    assert page.image.getpixel((10, 90)) == 255
+
+
+def test_bilevel_and_cmyk_scans_are_converted(tmp_path):
+    bilevel = tmp_path / "fax.tif"
+    Image.new("1", (1600, 100), 1).save(bilevel)
+    cmyk = tmp_path / "cmyk.jpg"
+    Image.new("CMYK", (1600, 100), (0, 0, 0, 0)).save(cmyk)
+    for path in (bilevel, cmyk):
+        page = next(iter_pages(path))
+        assert page.image.mode in ("L", "RGB")
+        assert page.image.convert("L").getpixel((5, 5)) > 240

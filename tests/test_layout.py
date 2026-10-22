@@ -97,3 +97,18 @@ def test_cells_competing_for_one_column_shift_right():
 def test_cell_beyond_last_column_is_appended():
     words = [w("A", 0, 0), w("B", 500, 0), w("C", 0, 100), w("D", 470, 100, width=20), w("E", 560, 100)]
     assert table_rows(words)[1] == ["C", "D", "E"]
+
+
+def test_vertical_line_reads_top_to_bottom():
+    """縦書きの行は左右の位置ではなく上から順に並べる (以前は文字順が崩れていた)。"""
+    column = [
+        w("情報", 10, 100, width=40, height=80),
+        w("診療", 0, 0, width=44, height=80),
+        w("書", 5, 190, width=40, height=40),
+    ]
+    assert [c.text for c in split_cells(column)] == ["診療情報書"]
+
+
+def test_vertical_line_splits_on_large_vertical_gap():
+    column = [w("氏名", 0, 0, width=40, height=80), w("山田", 0, 400, width=40, height=80)]
+    assert [c.text for c in split_cells(column)] == ["氏名", "山田"]

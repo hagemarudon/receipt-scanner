@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 from statistics import median
 
 from .textutil import tidy_japanese
@@ -31,6 +32,10 @@ class Word:
     @property
     def right(self) -> int:
         return self.left + self.width
+
+    @property
+    def bottom(self) -> int:
+        return self.top + self.height
 
     @property
     def center_y(self) -> float:
@@ -75,15 +80,31 @@ def split_cells(line_words: list[Word]) -> list[Cell]:
     """1 行分の単語を、広い空白で区切られたセルに分ける。"""
     if not line_words:
         return []
-    ordered = sorted(line_words, key=lambda w: w.left)
-    gap_limit = _char_height(ordered) * CELL_GAP_RATIO
+    if _is_vertical(line_words):
+        # 縦書きの行は上から下へ。文字の大きさは横幅で測る
+        ordered = sorted(line_words, key=lambda w: w.top)
+        char_size = max(median(w.width for w in ordered), 1)
+        gaps = [b.top - a.bottom for a, b in pairwise(ordered)]
+    else:
+        ordered = sorted(line_words, key=lambda w: w.left)
+        char_size = _char_height(ordered)
+        gaps = [b.left - a.right for a, b in pairwise(ordered)]
     groups: list[list[Word]] = [[ordered[0]]]
-    for word in ordered[1:]:
-        if word.left - groups[-1][-1].right > gap_limit:
+    for word, gap in zip(ordered[1:], gaps, strict=True):
+        if gap > char_size * CELL_GAP_RATIO:
             groups.append([word])
         else:
             groups[-1].append(word)
     return [Cell(tidy_japanese(" ".join(w.text for w in group)), group[0].left) for group in groups]
+
+
+def _is_vertical(line_words: list[Word]) -> bool:
+    """行全体が縦に長ければ縦書きの行とみなす。"""
+    if len(line_words) < 2:
+        return False
+    width = max(w.right for w in line_words) - min(w.left for w in line_words)
+    height = max(w.bottom for w in line_words) - min(w.top for w in line_words)
+    return height > width * 2
 
 
 def reading_order_text(words: list[Word]) -> str:

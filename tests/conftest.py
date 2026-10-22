@@ -23,15 +23,16 @@ def japanese_font_path() -> str | None:
     return next((p for p in JAPANESE_FONT_CANDIDATES if Path(p).is_file()), None)
 
 
-def tesseract_has_japanese() -> bool:
+def tesseract_languages() -> set[str]:
     cmd = shutil.which("tesseract")
     if not cmd:
-        return False
+        return set()
     out = subprocess.run([cmd, "--list-langs"], capture_output=True, text=True)
-    return "jpn" in (out.stdout + out.stderr).split()
+    return set((out.stdout + out.stderr).split())
 
 
-requires_tesseract = pytest.mark.skipif(not tesseract_has_japanese(), reason="Tesseract (jpn) が入っていない")
+requires_tesseract = pytest.mark.skipif("jpn" not in tesseract_languages(), reason="Tesseract (jpn) が入っていない")
+requires_vertical = pytest.mark.skipif("jpn_vert" not in tesseract_languages(), reason="jpn_vert が入っていない")
 requires_jp_font = pytest.mark.skipif(japanese_font_path() is None, reason="日本語フォントがない")
 
 
@@ -45,6 +46,18 @@ def render_lines(lines: list[str | tuple[str, ...]], size=(1800, 1000), font_siz
         cells = line if isinstance(line, tuple) else (line,)
         for col, cell in enumerate(cells):
             draw.text((80 + col * 520, y), cell, font=font, fill="black")
+    return image
+
+
+def render_vertical(columns: list[str], size=(1800, 2400), font_size=44) -> Image.Image:
+    """縦書き (右の列から左へ) の画像を作る。"""
+    font = ImageFont.truetype(japanese_font_path(), font_size)
+    image = Image.new("L", size, 255)
+    draw = ImageDraw.Draw(image)
+    for col, text in enumerate(columns):
+        x = size[0] - 200 - col * int(font_size * 2.5)
+        for row, char in enumerate(text):
+            draw.text((x, 100 + row * int(font_size * 1.2)), char, font=font, fill=0)
     return image
 
 

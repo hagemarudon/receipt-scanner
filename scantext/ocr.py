@@ -85,9 +85,13 @@ class OcrEngine:
             raise OcrError(f"言語データが入っていません: {files}\ntessdata フォルダに追加してください。")
 
     @property
+    def vertical(self) -> bool:
+        return "vert" in self.lang
+
+    @property
     def _psm(self) -> int:
         # 縦書きは「縦書きの 1 ブロック」として読ませた方が精度が良い
-        return 5 if "vert" in self.lang else 3
+        return 5 if self.vertical else 3
 
     def _config(self, page: PageImage) -> str:
         return f"--psm {self._psm} --dpi {page.dpi}"
@@ -113,7 +117,13 @@ class OcrEngine:
             page.image, lang=self.lang, config=self._config(page), output_type=pytesseract.Output.DICT
         )
         words = words_from_tesseract(data)
-        result = PageResult(text=reading_order_text(words), rows=table_rows(words))
+        text = reading_order_text(words)
+        if self.vertical:
+            # 縦書きは「横に並んだ列」がないので、CSV は 1 行ずつにする
+            rows = [[line] for line in text.splitlines() if line]
+        else:
+            rows = table_rows(words)
+        result = PageResult(text=text, rows=rows)
         if with_pdf:
             result.searchable_pdf = pytesseract.image_to_pdf_or_hocr(
                 page.image, lang=self.lang, config=self._config(page), extension="pdf"

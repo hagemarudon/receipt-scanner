@@ -98,6 +98,9 @@ def _prepare(image: Image.Image, dpi: int) -> PageImage:
         background = Image.new("RGB", image.size, "white")
         background.paste(image, mask=image.getchannel("A"))
         image = background
+    elif image.mode.startswith("I;16") or image.mode == "I":
+        # 16 ビットのグレー。そのまま変換すると 255 を超える値がすべて白になり、薄い文字が消える
+        image = image.convert("I").point(lambda v: v / 256).convert("L")
     elif image.mode not in ("RGB", "L"):
         image = image.convert("RGB")
 

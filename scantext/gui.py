@@ -345,10 +345,15 @@ class App:
     def start(self) -> None:
         if self._running:
             return
-        targets = [(item, path) for item, path in self.files.items() if self.tree.set(item, "status") != STATUS_DONE]
-        if not targets:
+        if not self.files:
             messagebox.showinfo(APP_NAME, "文字起こしするファイルを追加してください。")
             return
+        targets = [(item, path) for item, path in self.files.items() if self.tree.set(item, "status") != STATUS_DONE]
+        if not targets:
+            # 形式を変えてもう一度保存したいときなど
+            if not messagebox.askyesno(APP_NAME, "すべて完了しています。もう一度文字起こししますか？"):
+                return
+            targets = list(self.files.items())
         if self.dest_mode.get() == "custom" and not self.output_dir_var.get().strip():
             messagebox.showwarning(APP_NAME, "保存先フォルダを指定してください。")
             return
