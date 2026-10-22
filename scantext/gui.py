@@ -48,6 +48,27 @@ def open_path(path: Path, select: bool = False) -> None:
         subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(path.parent if select else path)])
 
 
+# カルテ・処方箋の用紙から取った色
+PAPER = "#F2F6F5"  # 背景 (うすい青緑の用紙)
+SHEET = "#FFFFFF"  # 一覧・結果の紙面
+INK = "#1F2A37"  # 文字
+MUTED = "#5E6E6B"  # 補足の文字
+RULE = "#C5D3D0"  # 罫線
+GREEN = "#1D6B5C"  # 主な操作と選択中 (処方箋の緑)
+GREEN_DARK = "#17574B"
+GREEN_PALE = "#DCEDE8"
+RED = "#B3261E"
+
+# 高齢の方にも読みやすいユニバーサルデザインのフォント (Windows 10 以降に標準で入っている)
+UI_FONTS = ("BIZ UDPゴシック", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo UI", "Noto Sans CJK JP")
+MONO_FONTS = ("BIZ UDゴシック", "BIZ UDGothic", "MS Gothic", "Noto Sans Mono CJK JP")
+
+
+def _pick_font(candidates: tuple[str, ...], fallback: str) -> str:
+    available = set(font.families())
+    return next((name for name in candidates if name in available), fallback)
+
+
 class App:
     def __init__(self, root: tk.Tk, settings_path: Path | None = None):
         self.root = root
@@ -61,175 +82,335 @@ class App:
         self.dnd = TkinterDnD is not None and getattr(root, "TkdndVersion", None) is not None
 
         root.title(APP_NAME)
-        root.geometry("900x740")
-        root.minsize(720, 600)
-        for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
-            font.nametofont(name).configure(size=11)
-        style = ttk.Style(root)
-        style.configure("Treeview", rowheight=26)
-        family = font.nametofont("TkDefaultFont").actual("family")
-        style.configure("Accent.TButton", font=(family, 12, "bold"), padding=(16, 6))
+        root.geometry("1040x720")  # 1366x768 の画面でも収まる高さ
+        root.minsize(900, 640)
+        root.configure(background=PAPER)
+        self._setup_style()
 
         self._build()
         self._load_settings_into_widgets()
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         root.after(100, self._poll_events)
 
+    # ---------- 見た目 ----------
+
+    def _setup_style(self) -> None:
+        family = _pick_font(UI_FONTS, font.nametofont("TkDefaultFont").actual("family"))
+        self.mono_family = _pick_font(MONO_FONTS, family)
+        self.ui_family = family
+        for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
+            font.nametofont(name).configure(family=family, size=12)
+
+        style = ttk.Style(self.root)
+        style.theme_use("clam")  # 色を細かく指定できるテーマ
+        style.configure(".", background=PAPER, foreground=INK, font=(family, 12), bordercolor=RULE)
+        style.configure("TFrame", background=PAPER)
+        style.configure("Sheet.TFrame", background=SHEET)
+        style.configure("TLabel", background=PAPER, foreground=INK)
+        style.configure("Sheet.TLabel", background=SHEET)
+        style.configure("Muted.TLabel", foreground=MUTED, font=(family, 11))
+        style.configure("SheetMuted.TLabel", background=SHEET, foreground=MUTED, font=(family, 11))
+        style.configure("Title.TLabel", font=(family, 18, "bold"))
+        style.configure("Heading.TLabel", font=(family, 13, "bold"))
+        style.configure("SheetHeading.TLabel", background=SHEET, font=(family, 13, "bold"))
+
+        style.configure(
+            "TButton",
+            background=SHEET,
+            foreground=INK,
+            padding=(14, 6),
+            borderwidth=1,
+            bordercolor=RULE,
+            lightcolor=SHEET,
+            darkcolor=SHEET,
+        )
+        style.map(
+            "TButton",
+            background=[("disabled", PAPER), ("pressed", GREEN_PALE), ("active", "#E8F1EF")],
+            lightcolor=[("disabled", PAPER), ("pressed", GREEN_PALE), ("active", "#E8F1EF")],
+            darkcolor=[("disabled", PAPER), ("pressed", GREEN_PALE), ("active", "#E8F1EF")],
+            foreground=[("disabled", "#9AA7A4")],
+            bordercolor=[("focus", GREEN)],
+        )
+        style.configure(
+            "Primary.TButton",
+            background=GREEN,
+            foreground="white",
+            font=(family, 15, "bold"),
+            padding=(32, 12),
+            bordercolor=GREEN,
+            lightcolor=GREEN,
+            darkcolor=GREEN,
+        )
+        style.map(
+            "Primary.TButton",
+            background=[("disabled", "#A9C3BD"), ("pressed", GREEN_DARK), ("active", GREEN_DARK)],
+            lightcolor=[("disabled", "#A9C3BD"), ("pressed", GREEN_DARK), ("active", GREEN_DARK)],
+            darkcolor=[("disabled", "#A9C3BD"), ("pressed", GREEN_DARK), ("active", GREEN_DARK)],
+            foreground=[("disabled", "white")],
+            bordercolor=[("focus", INK)],
+        )
+
+        style.configure(
+            "Treeview",
+            background=SHEET,
+            fieldbackground=SHEET,
+            foreground=INK,
+            rowheight=34,
+            borderwidth=0,
+            font=(family, 12),
+        )
+        style.map("Treeview", background=[("selected", GREEN_PALE)], foreground=[("selected", INK)])
+        style.configure(
+            "Treeview.Heading", background=PAPER, foreground=MUTED, font=(family, 11), relief="flat", padding=(8, 6)
+        )
+        style.layout("Treeview", [("Treeview.treearea", {"sticky": "nswe"})])  # 二重の枠線を消す
+
+        for widget in ("TRadiobutton", "TCheckbutton"):
+            style.configure(widget, background=PAPER, foreground=INK, indicatorcolor=SHEET)
+            style.map(widget, indicatorcolor=[("selected", GREEN)], background=[("active", PAPER)])
+        style.configure("TCombobox", fieldbackground=SHEET, background=SHEET, arrowcolor=INK, padding=4)
+        style.map("TCombobox", fieldbackground=[("disabled", PAPER)], foreground=[("disabled", "#9AA7A4")])
+        style.configure("TEntry", fieldbackground=SHEET, padding=4)
+        style.configure(
+            "Green.Horizontal.TProgressbar", troughcolor=RULE, background=GREEN, bordercolor=RULE, thickness=8
+        )
+        style.configure("Vertical.TScrollbar", background=PAPER, troughcolor=SHEET, arrowcolor=MUTED)
+
     # ---------- 画面の組み立て ----------
 
     def _build(self) -> None:
-        main = ttk.Frame(self.root, padding=12)
+        main = ttk.Frame(self.root, padding=(24, 14, 24, 16))
         main.pack(fill="both", expand=True)
         main.columnconfigure(0, weight=1)
-        main.rowconfigure(1, weight=1)
-        main.rowconfigure(5, weight=2)
+        main.rowconfigure(3, weight=1)
 
-        bar = ttk.Frame(main)
-        bar.grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        self.add_files_button = ttk.Button(bar, text="ファイルを追加…", command=self.add_files)
-        self.add_files_button.pack(side="left")
-        self.add_folder_button = ttk.Button(bar, text="フォルダを追加…", command=self.add_folder)
-        self.add_folder_button.pack(side="left", padx=6)
-        self.remove_button = ttk.Button(bar, text="リストから外す", command=self.remove_selected)
-        self.remove_button.pack(side="left")
+        ttk.Label(main, text=APP_NAME, style="Title.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 10))
 
-        list_frame = ttk.Frame(main)
-        list_frame.grid(row=1, column=0, sticky="nsew")
-        list_frame.columnconfigure(0, weight=1)
-        list_frame.rowconfigure(0, weight=1)
-        self.tree = ttk.Treeview(list_frame, columns=("status", "folder"), height=5, selectmode="extended")
+        upper = ttk.Frame(main)
+        upper.grid(row=1, column=0, sticky="nsew")
+        upper.columnconfigure(0, weight=1)
+        upper.rowconfigure(0, weight=1)
+        self._build_tray(upper).grid(row=0, column=0, sticky="nsew", padx=(0, 24))
+        self._build_output_settings(upper).grid(row=0, column=1, sticky="ns")
+        self._build_menu()
+
+        run = ttk.Frame(main)
+        run.grid(row=2, column=0, sticky="ew", pady=(16, 14))
+        run.columnconfigure(2, weight=1)
+        self.start_button = ttk.Button(run, text="文字起こしを開始", style="Primary.TButton", command=self.start)
+        self.start_button.grid(row=0, column=0, rowspan=2)
+        self.stop_button = ttk.Button(run, text="中止", command=self.stop, state="disabled")
+        self.stop_button.grid(row=0, column=1, rowspan=2, padx=(10, 18))
+        self.progress = ttk.Progressbar(run, mode="determinate", style="Green.Horizontal.TProgressbar")
+        self.progress.grid(row=0, column=2, sticky="sew")
+        self.status = tk.StringVar()
+        ttk.Label(run, textvariable=self.status, style="Muted.TLabel").grid(row=1, column=2, sticky="nw", pady=(6, 0))
+
+        self._build_result(main).grid(row=3, column=0, sticky="nsew")
+        self._refresh_empty_state()
+
+    def _build_tray(self, parent) -> ttk.Frame:
+        """書類の一覧。スキャナの給紙トレイに見立て、空のときは全体が投入口になる。"""
+        tray = ttk.Frame(parent)
+        tray.columnconfigure(0, weight=1)
+        tray.rowconfigure(1, weight=1)
+        ttk.Label(tray, text="書類", style="Heading.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        sheet = tk.Frame(tray, background=SHEET, highlightthickness=1, highlightbackground=RULE)
+        sheet.grid(row=1, column=0, sticky="nsew")
+        sheet.columnconfigure(0, weight=1)
+        sheet.rowconfigure(0, weight=1)
+        self.tree = ttk.Treeview(sheet, columns=("status", "folder"), height=5, selectmode="extended")
         self.tree.heading("#0", text="ファイル", anchor="w")
         self.tree.heading("status", text="状態", anchor="w")
         self.tree.heading("folder", text="場所", anchor="w")
-        self.tree.column("#0", width=260, stretch=False)
-        self.tree.column("status", width=200, stretch=False)
-        self.tree.column("folder", width=300, stretch=True)
+        self.tree.column("#0", width=220, stretch=False)
+        self.tree.column("status", width=230, stretch=False)
+        self.tree.column("folder", width=160, stretch=True)
+        self.tree.tag_configure("done", foreground=GREEN)
+        self.tree.tag_configure("error", foreground=RED)
+        self.tree.tag_configure("busy", foreground=INK, font=(self.ui_family, 12, "bold"))
         self.tree.grid(row=0, column=0, sticky="nsew")
-        scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
+        scroll = ttk.Scrollbar(sheet, orient="vertical", command=self.tree.yview)
         scroll.grid(row=0, column=1, sticky="ns")
         self.tree.configure(yscrollcommand=scroll.set)
         self.tree.bind("<<TreeviewSelect>>", lambda _e: self._show_selected_result())
         self.tree.bind("<Double-1>", lambda _e: self.open_selected_output())
         self.tree.bind("<Delete>", lambda _e: self.remove_selected())
 
-        hint = "ここにファイルをドラッグ＆ドロップ" if self.dnd else "「ファイルを追加…」から選んでください"
-        background = ttk.Style(self.root).lookup("Treeview", "fieldbackground") or "white"
-        self.empty_label = tk.Label(
-            list_frame,
-            text=f"JPG・PDF をまだ追加していません\n{hint}",
-            justify="center",
-            foreground="gray",
-            background=background,
-        )
+        # 空のときに一覧の上に重ねる投入口 (点線の枠)
+        self.empty_label = tk.Canvas(sheet, background=SHEET, highlightthickness=0, cursor="hand2")
+        self.empty_label.bind("<Configure>", lambda _e: self._draw_empty_tray())
+        self.empty_label.bind("<Button-1>", lambda _e: self.add_files())
         if self.dnd:
             for widget in (self.tree, self.empty_label):
                 widget.drop_target_register(DND_FILES)
                 widget.dnd_bind("<<Drop>>", self._on_drop)
 
-        self._build_output_settings(main).grid(row=2, column=0, sticky="ew", pady=(10, 0))
-        self._build_menu()
+        buttons = ttk.Frame(tray)
+        buttons.grid(row=2, column=0, sticky="w", pady=(10, 0))
+        self.add_files_button = ttk.Button(buttons, text="ファイルを追加…", command=self.add_files)
+        self.add_files_button.pack(side="left")
+        self.add_folder_button = ttk.Button(buttons, text="フォルダを追加…", command=self.add_folder)
+        self.add_folder_button.pack(side="left", padx=8)
+        self.remove_button = ttk.Button(buttons, text="リストから外す", command=self.remove_selected)
+        self.remove_button.pack(side="left")
+        return tray
 
-        run = ttk.Frame(main)
-        run.grid(row=4, column=0, sticky="ew", pady=10)
-        run.columnconfigure(2, weight=1)
-        self.start_button = ttk.Button(run, text="文字起こしを開始", style="Accent.TButton", command=self.start)
-        self.start_button.grid(row=0, column=0)
-        self.stop_button = ttk.Button(run, text="中止", command=self.stop, state="disabled")
-        self.stop_button.grid(row=0, column=1, padx=6)
-        self.progress = ttk.Progressbar(run, mode="determinate")
-        self.progress.grid(row=0, column=2, sticky="ew", padx=(6, 0))
-        self.status = tk.StringVar()
-        ttk.Label(run, textvariable=self.status).grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
-
-        result = ttk.LabelFrame(main, text="文字起こし結果", padding=8)
-        result.grid(row=5, column=0, sticky="nsew")
-        result.columnconfigure(0, weight=1)
-        result.rowconfigure(1, weight=1)
-        actions = ttk.Frame(result)
-        actions.grid(row=0, column=0, columnspan=2, sticky="e", pady=(0, 4))
-        self.copy_button = ttk.Button(actions, text="コピー", command=self.copy_text, state="disabled")
-        self.copy_button.pack(side="left")
-        self.open_button = ttk.Button(
-            actions, text="保存したファイルを開く", command=self.open_selected_output, state="disabled"
+    def _draw_empty_tray(self) -> None:
+        canvas = self.empty_label
+        canvas.delete("all")
+        width, height = canvas.winfo_width(), canvas.winfo_height()
+        if width < 40 or height < 40:
+            return
+        canvas.create_rectangle(14, 14, width - 14, height - 14, outline=GREEN, dash=(6, 5), width=2)
+        main_text = "ここに書類をドラッグ" if self.dnd else "クリックして書類を選ぶ"
+        canvas.create_text(width / 2, height / 2 - 14, text=main_text, fill=INK, font=(self.ui_family, 16, "bold"))
+        canvas.create_text(
+            width / 2, height / 2 + 18, text="JPG・PDF・PNG・TIFF", fill=MUTED, font=(self.ui_family, 11)
         )
-        self.open_button.pack(side="left", padx=6)
-        self.folder_button = ttk.Button(
-            actions, text="保存先フォルダを開く", command=self.open_selected_folder, state="disabled"
-        )
-        self.folder_button.pack(side="left")
-        self.output_label = ttk.Label(result, foreground="gray")
-        self.output_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        self.text = tk.Text(
-            result, wrap="char", height=10, font=("Yu Gothic UI", 11) if sys.platform == "win32" else None
-        )
-        self.text.grid(row=1, column=0, sticky="nsew")
-        text_scroll = ttk.Scrollbar(result, orient="vertical", command=self.text.yview)
-        text_scroll.grid(row=1, column=1, sticky="ns")
-        self.text.configure(yscrollcommand=text_scroll.set, state="disabled")
 
-        self._refresh_empty_state()
+    def _build_output_settings(self, parent) -> ttk.Frame:
+        panel = ttk.Frame(parent, width=330)
+        panel.columnconfigure(0, weight=1)
+        ttk.Label(panel, text="保存する形式", style="Heading.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 8))
 
-    def _build_output_settings(self, parent) -> ttk.LabelFrame:
-        frame = ttk.LabelFrame(parent, text="出力", padding=8)
-        frame.columnconfigure(1, weight=1)
-
-        ttk.Label(frame, text="形式").grid(row=0, column=0, sticky="w", padx=(0, 12))
-        formats = ttk.Frame(frame)
-        formats.grid(row=0, column=1, columnspan=2, sticky="w")
+        # よく変える設定なので、ひと目で選べる大きな札にする
         self.format_var = tk.StringVar()
-        for value, label in FORMAT_LABELS.items():
-            ttk.Radiobutton(
-                formats, text=label, value=value, variable=self.format_var, command=self._sync_widgets
-            ).pack(side="left", padx=(0, 16))
+        self.format_tiles: dict[str, tk.Radiobutton] = {}
+        tiles = ttk.Frame(panel)
+        tiles.grid(row=1, column=0, sticky="ew")
+        for column, (value, label) in enumerate(FORMAT_LABELS.items()):
+            name, ext = label.replace(")", "").split(" (")
+            tile = tk.Radiobutton(
+                tiles,
+                text=f"{name}\n{ext}",
+                value=value,
+                variable=self.format_var,
+                command=self._sync_widgets,
+                indicatoron=False,
+                width=8,
+                pady=10,
+                relief="flat",
+                offrelief="flat",
+                borderwidth=0,
+                highlightthickness=1,
+                cursor="hand2",
+                font=(self.ui_family, 13, "bold"),
+            )
+            tile.grid(row=0, column=column, sticky="ew", padx=(0 if column == 0 else 6, 0))
+            tiles.columnconfigure(column, weight=1)
+            self.format_tiles[value] = tile
 
-        ttk.Label(frame, text="PDF の中身").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        options = ttk.Frame(panel)
+        options.grid(row=2, column=0, sticky="ew", pady=(16, 0))
+        options.columnconfigure(0, weight=1)
+
+        def field(row: int, text: str) -> None:
+            ttk.Label(options, text=text, style="Muted.TLabel").grid(row=row, column=0, sticky="w", pady=(10, 3))
+
+        # 「PDF の中身」と「文字コード」は同時には使わないので、同じ場所で切り替える
+        self.detail_label = ttk.Label(options, style="Muted.TLabel")
+        self.detail_label.grid(row=0, column=0, sticky="w", pady=(0, 3))
         self.pdf_mode_var = tk.StringVar()
         self.pdf_mode_box = ttk.Combobox(
-            frame, textvariable=self.pdf_mode_var, values=list(PDF_MODE_LABELS.values()), state="readonly", width=34
+            options, textvariable=self.pdf_mode_var, values=list(PDF_MODE_LABELS.values()), state="readonly"
         )
-        self.pdf_mode_box.grid(row=1, column=1, sticky="w", pady=(6, 0))
-
-        ttk.Label(frame, text="文字コード").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.pdf_mode_box.grid(row=1, column=0, sticky="ew")
         self.encoding_var = tk.StringVar()
         self.encoding_box = ttk.Combobox(
-            frame, textvariable=self.encoding_var, values=list(ENCODING_LABELS.values()), state="readonly", width=14
+            options, textvariable=self.encoding_var, values=list(ENCODING_LABELS.values()), state="readonly"
         )
-        self.encoding_box.grid(row=2, column=1, sticky="w", pady=(6, 0))
+        self.encoding_box.grid(row=1, column=0, sticky="ew")
 
-        ttk.Label(frame, text="保存先").grid(row=3, column=0, sticky="w", pady=(6, 0))
-        dest = ttk.Frame(frame)
-        dest.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(6, 0))
-        dest.columnconfigure(2, weight=1)
+        field(2, "保存先")
         self.dest_mode = tk.StringVar()
         ttk.Radiobutton(
-            dest, text="元のファイルと同じフォルダ", value="same", variable=self.dest_mode, command=self._sync_widgets
-        ).grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(
-            dest, text="指定したフォルダ", value="custom", variable=self.dest_mode, command=self._sync_widgets
-        ).grid(row=0, column=1, sticky="w", padx=(16, 6))
+            options,
+            text="元のファイルと同じフォルダ",
+            value="same",
+            variable=self.dest_mode,
+            command=self._sync_widgets,
+        ).grid(row=3, column=0, sticky="w")
+        dest = ttk.Frame(options)
+        dest.grid(row=4, column=0, sticky="ew", pady=(4, 0))
+        dest.columnconfigure(1, weight=1)
+        ttk.Radiobutton(dest, text="指定", value="custom", variable=self.dest_mode, command=self._sync_widgets).grid(
+            row=0, column=0, sticky="w", padx=(0, 6)
+        )
         self.output_dir_var = tk.StringVar()
         self.output_dir_entry = ttk.Entry(dest, textvariable=self.output_dir_var)
-        self.output_dir_entry.grid(row=0, column=2, sticky="ew")
+        self.output_dir_entry.grid(row=0, column=1, sticky="ew")
         self.output_dir_button = ttk.Button(dest, text="参照…", command=self.choose_output_dir)
-        self.output_dir_button.grid(row=0, column=3, padx=(6, 0))
+        self.output_dir_button.grid(row=0, column=2, padx=(6, 0))
 
-        ttk.Label(frame, text="書類の言語").grid(row=4, column=0, sticky="w", pady=(6, 0))
-        reading = ttk.Frame(frame)
-        reading.grid(row=4, column=1, columnspan=2, sticky="w", pady=(6, 0))
+        # めったに変えない設定はメニュー「設定」に置く
         self.language_var = tk.StringVar()
-        ttk.Combobox(reading, textvariable=self.language_var, values=list(LANGUAGES), state="readonly", width=16).pack(
-            side="left"
-        )
         self.rotate_var = tk.BooleanVar()
-        ttk.Checkbutton(reading, text="横向き・逆さまのスキャンを自動で直す", variable=self.rotate_var).pack(
-            side="left", padx=(16, 0)
-        )
         self.tesseract_var = tk.StringVar()
+        return panel
+
+    def _build_result(self, parent) -> ttk.Frame:
+        frame = ttk.Frame(parent)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
+
+        header = ttk.Frame(frame)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        header.columnconfigure(0, weight=1)
+        self.result_title = ttk.Label(header, text="結果", style="Heading.TLabel")
+        self.result_title.grid(row=0, column=0, sticky="w")
+        self.copy_button = ttk.Button(header, text="コピー", command=self.copy_text, state="disabled")
+        self.copy_button.grid(row=0, column=1)
+        self.open_button = ttk.Button(
+            header, text="保存したファイルを開く", command=self.open_selected_output, state="disabled"
+        )
+        self.open_button.grid(row=0, column=2, padx=8)
+        self.folder_button = ttk.Button(
+            header, text="保存先フォルダを開く", command=self.open_selected_folder, state="disabled"
+        )
+        self.folder_button.grid(row=0, column=3)
+
+        sheet = tk.Frame(frame, background=SHEET, highlightthickness=1, highlightbackground=RULE)
+        sheet.grid(row=1, column=0, sticky="nsew")
+        sheet.columnconfigure(0, weight=1)
+        sheet.rowconfigure(0, weight=1)
+        self.text = tk.Text(
+            sheet,
+            wrap="char",
+            height=8,
+            font=(self.mono_family, 13),
+            background=SHEET,
+            foreground=INK,
+            relief="flat",
+            borderwidth=0,
+            padx=16,
+            pady=12,
+            spacing1=2,
+            spacing3=4,
+            selectbackground=GREEN_PALE,
+            selectforeground=INK,
+            highlightthickness=0,
+        )
+        self.text.grid(row=0, column=0, sticky="nsew")
+        text_scroll = ttk.Scrollbar(sheet, orient="vertical", command=self.text.yview)
+        text_scroll.grid(row=0, column=1, sticky="ns")
+        self.text.configure(yscrollcommand=text_scroll.set, state="disabled")
+
+        self.output_label = ttk.Label(frame, style="Muted.TLabel")
+        self.output_label.grid(row=2, column=0, sticky="w", pady=(6, 0))
         return frame
 
     def _build_menu(self) -> None:
         menubar = tk.Menu(self.root)
         settings_menu = tk.Menu(menubar, tearoff=False)
+        language_menu = tk.Menu(settings_menu, tearoff=False)
+        for label in LANGUAGES:
+            language_menu.add_radiobutton(label=label, value=label, variable=self.language_var)
+        settings_menu.add_cascade(label="書類の言語", menu=language_menu)
+        settings_menu.add_checkbutton(label="横向き・逆さまのスキャンを自動で直す", variable=self.rotate_var)
+        settings_menu.add_separator()
         settings_menu.add_command(label="Tesseract の場所を指定…", command=self.choose_tesseract)
         settings_menu.add_command(label="Tesseract の場所を自動で探す", command=lambda: self.tesseract_var.set(""))
         menubar.add_cascade(label="設定", menu=settings_menu)
@@ -269,8 +450,25 @@ class App:
 
     def _sync_widgets(self) -> None:
         fmt = self.format_var.get()
+        for value, tile in self.format_tiles.items():
+            selected = value == fmt
+            tile.configure(
+                background=GREEN if selected else SHEET,
+                foreground="white" if selected else INK,
+                activebackground=GREEN_DARK if selected else GREEN_PALE,
+                activeforeground="white" if selected else INK,
+                selectcolor=GREEN,
+                highlightbackground=GREEN if selected else RULE,
+                highlightcolor=INK,
+            )
         self.pdf_mode_box.configure(state="readonly" if fmt == "pdf" else "disabled")
         self.encoding_box.configure(state="disabled" if fmt == "pdf" else "readonly")
+        shown, hidden = (
+            (self.pdf_mode_box, self.encoding_box) if fmt == "pdf" else (self.encoding_box, self.pdf_mode_box)
+        )
+        hidden.grid_remove()
+        shown.grid()
+        self.detail_label.configure(text="PDF の中身" if fmt == "pdf" else "文字コード")
         custom = "normal" if self.dest_mode.get() == "custom" else "disabled"
         self.output_dir_entry.configure(state=custom)
         self.output_dir_button.configure(state=custom)
@@ -334,7 +532,7 @@ class App:
         if self.files:
             self.empty_label.place_forget()
         else:
-            self.empty_label.place(relx=0.5, rely=0.55, anchor="center")
+            self.empty_label.place(relx=0, rely=0, relwidth=1, relheight=1)
 
     # ---------- 実行 ----------
 
@@ -421,6 +619,7 @@ class App:
             _, item, text, _index, name = event
             if self.tree.exists(item):
                 self.tree.set(item, "status", text)
+                self.tree.item(item, tags=("busy",) if text.startswith("処理中") else ())
             if name:
                 self.status.set(f"{name} を読み取っています")
         elif kind == "done":
@@ -428,12 +627,14 @@ class App:
             self.results[item] = result
             if self.tree.exists(item):
                 self.tree.set(item, "status", STATUS_DONE)
+                self.tree.item(item, tags=("done",))
                 self.tree.selection_set(item)
                 self.tree.see(item)
         elif kind == "error":
             _, item, message = event
             if self.tree.exists(item):
                 self.tree.set(item, "status", f"エラー: {message.splitlines()[0]}")
+                self.tree.item(item, tags=("error",))
         elif kind == "progress":
             self.progress.configure(value=event[1])
         elif kind == "fatal":
@@ -467,6 +668,7 @@ class App:
             self.text.insert("1.0", result.text)
         self.text.configure(state="disabled")
         self.output_label.configure(text=f"保存先: {result.output}" if result else "")
+        self.result_title.configure(text=f"結果: {result.source.name}" if result else "結果")
         state = "normal" if result else "disabled"
         for button in (self.copy_button, self.open_button, self.folder_button):
             button.configure(state=state)
