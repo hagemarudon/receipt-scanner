@@ -17,8 +17,8 @@ def test_output_to_chosen_folder(sample_jpg, tmp_path):
 
 
 def test_existing_output_is_never_overwritten(sample_jpg):
-    sample_jpg.with_suffix(".txt").write_text("前の結果")
-    (sample_jpg.parent / "scan (2).txt").write_text("前の結果")
+    sample_jpg.with_suffix(".txt").write_text("前の結果", encoding="utf-8")
+    (sample_jpg.parent / "scan (2).txt").write_text("前の結果", encoding="utf-8")
     assert output_path_for(sample_jpg, Settings()).name == "scan (3).txt"
 
 

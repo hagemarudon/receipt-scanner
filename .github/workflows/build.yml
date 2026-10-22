@@ -34,7 +34,7 @@ jobs:
           choco install tesseract -y --no-progress
           $dir = "C:\Program Files\Tesseract-OCR"
           foreach ($lang in "jpn", "jpn_vert") {
-            Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata/raw/main/$lang.traineddata" -OutFile "$dir\tessdata\$lang.traineddata"
+            Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata_fast/raw/main/$lang.traineddata" -OutFile "$dir\tessdata\$lang.traineddata"
           }
           Add-Content $env:GITHUB_PATH $dir
       - run: pip install -e ".[dev]" pyinstaller

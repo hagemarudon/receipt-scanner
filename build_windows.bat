@@ -16,7 +16,7 @@ python -m pip install -r requirements.txt pyinstaller || exit /b 1
 for %%L in (jpn jpn_vert) do (
   if not exist "%TESSERACT_DIR%\tessdata\%%L.traineddata" (
     echo Downloading %%L.traineddata
-    curl -L -o "%TEMP%\%%L.traineddata" https://github.com/tesseract-ocr/tessdata/raw/main/%%L.traineddata || exit /b 1
+    curl -L -o "%TEMP%\%%L.traineddata" https://github.com/tesseract-ocr/tessdata_fast/raw/main/%%L.traineddata || exit /b 1
     copy /y "%TEMP%\%%L.traineddata" "%TESSERACT_DIR%\tessdata\" || exit /b 1
   )
 )
