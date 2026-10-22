@@ -87,3 +87,13 @@ def test_low_confidence_noise_is_dropped():
         "line_num": [1, 1],
     }
     assert [x.text for x in words_from_tesseract(data)] == ["様"]
+
+
+def test_cells_competing_for_one_column_shift_right():
+    words = [w("A", 0, 0), w("B", 500, 0), w("C", 0, 100), w("D", 130, 100), w("E", 500, 100)]
+    assert table_rows(words) == [["A", "", "B"], ["C", "D", "E"]]
+
+
+def test_cell_beyond_last_column_is_appended():
+    words = [w("A", 0, 0), w("B", 500, 0), w("C", 0, 100), w("D", 470, 100, width=20), w("E", 560, 100)]
+    assert table_rows(words)[1] == ["C", "D", "E"]

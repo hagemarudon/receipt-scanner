@@ -86,3 +86,20 @@ def test_missing_tesseract_is_explained(monkeypatch):
     monkeypatch.setattr("scantext.ocr.find_tesseract", lambda configured="": None)
     with pytest.raises(OcrError, match="見つかりません"):
         OcrEngine()
+
+
+def test_blank_page_gives_empty_result(engine):
+    """両面スキャンの裏面など、白紙のページで止まらない。"""
+    from PIL import Image
+
+    result = engine.recognize(PageImage(Image.new("L", (2480, 3508), 255), 300), with_pdf=True)
+    assert result.text == "" and result.rows == []
+    assert result.searchable_pdf
+
+
+def test_cli_reports_bad_files_but_continues(tmp_path, capsys):
+    render_lines(LETTER).save(tmp_path / "good.jpg")
+    (tmp_path / "bad.jpg").write_bytes(b"broken")
+    assert cli_main([str(tmp_path / "bad.jpg"), str(tmp_path / "good.jpg")]) == 1
+    assert (tmp_path / "good.txt").exists()
+    assert "bad.jpg" in capsys.readouterr().err
