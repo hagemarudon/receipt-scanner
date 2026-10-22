@@ -39,6 +39,8 @@ ScanText\
 3. 「文字起こしを開始」
 4. 一覧のファイルを選ぶと下に結果が表示されます。ダブルクリックで保存したファイルを開けます。
 
+詳しい使い方と困ったときの対処は [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (印刷してそばに置ける分量) にあります。
+
 保存先に同じ名前のファイルがあるときは上書きせず「名前 (2).txt」のように別名で保存します。
 PDF を PDF で保存するときは元のファイルを消さないよう「名前_文字起こし.pdf」になります。
 
@@ -74,7 +76,13 @@ python -m scantext --cli 書類.pdf -f csv -o 出力先   # コマンドで処�
 pytest                                              # テスト (Tesseract がなければ OCR のテストは飛ばされます)
 ```
 
-テストの方針は [docs/TEST_PLAN.md](docs/TEST_PLAN.md) にまとめています。
+## 文書
+
+| 読む人 | 文書 |
+| --- | --- |
+| 使う人 | [使い方 (印刷用)](docs/USER_GUIDE.md) |
+| 導入する人 | [導入チェックリスト](docs/DEPLOY_CHECKLIST.md) |
+| 開発する人 | [構成](docs/ARCHITECTURE.md) / [テスト計画](docs/TEST_PLAN.md) / [手書き問診票の設計](docs/DESIGN_handwriting.md) / [ADR](docs/adr/) |
 
 ## 使っているソフトとライセンス
 
