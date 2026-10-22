@@ -1,0 +1,59 @@
+name: test-and-build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tesseract と日本語フォントを入れる
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-jpn tesseract-ocr-jpn-vert fonts-noto-cjk xvfb
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: xvfb-run -a pytest -v
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tesseract を入れる
+        shell: pwsh
+        run: |
+          choco install tesseract -y --no-progress
+          $dir = "C:\Program Files\Tesseract-OCR"
+          foreach ($lang in "jpn", "jpn_vert") {
+            Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata/raw/main/$lang.traineddata" -OutFile "$dir\tessdata\$lang.traineddata"
+          }
+          Add-Content $env:GITHUB_PATH $dir
+      - run: pip install -e ".[dev]" pyinstaller
+      - run: pytest -v
+      - name: exe を作る
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --name ScanText --collect-all tkinterdnd2 run_scantext.py
+          Copy-Item -Recurse "C:\Program Files\Tesseract-OCR" dist\ScanText\tesseract
+          Copy-Item README.md dist\ScanText\
+      - name: exe で実際に文字起こしできるか確かめる
+        shell: pwsh
+        run: |
+          $python = "$env:pythonLocation\python.exe"
+          $env:PATH = "C:\Windows\System32;C:\Windows"  # PATH 上の Tesseract ではなく同梱版を使わせる
+          $env:PYTHONUTF8 = "1"
+          & $python tests\smoke_bundle.py dist\ScanText
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ScanText-windows
+          path: dist/ScanText

@@ -1,0 +1,88 @@
+"""実際の Tesseract で読み取るテスト。Tesseract と日本語フォントがない環境では飛ばす。"""
+
+import csv
+import io
+
+import pymupdf
+import pytest
+
+from scantext.cli import main as cli_main
+from scantext.loader import PageImage
+from scantext.ocr import OcrEngine, OcrError
+from scantext.processor import process_file
+from scantext.settings import Settings
+
+from .conftest import render_lines, requires_jp_font, requires_tesseract
+
+pytestmark = [pytest.mark.tesseract, requires_tesseract, requires_jp_font]
+
+LETTER = ["診療情報提供書", "患者氏名　山田太郎　様", "令和6年4月1日に受診されました。", "血圧は128/80でした。"]
+TABLE = [("検査項目", "結果", "単位"), ("血糖", "98", "mg/dL"), ("総コレステロール", "210", "mg/dL")]
+
+
+@pytest.fixture(scope="module")
+def engine():
+    return OcrEngine(lang="jpn")
+
+
+def _save_scan_pdf(image, path):
+    """スキャナが作る PDF と同じく「画像だけが入った PDF」を作る。"""
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    with pymupdf.open() as doc:
+        page = doc.new_page(width=image.width * 72 / 300, height=image.height * 72 / 300)
+        page.insert_image(page.rect, stream=buffer.getvalue())
+        doc.save(path)
+
+
+def test_reads_japanese_letter(engine):
+    text = engine.recognize(PageImage(render_lines(LETTER), 300)).text
+    for expected in ("診療情報提供書", "山田太郎", "様", "令和6年4月1日", "128/80"):
+        assert expected in text
+
+
+def test_rotated_scan_is_straightened(engine):
+    image = render_lines(LETTER).rotate(90, expand=True)
+    assert "診療情報提供書" in engine.recognize(PageImage(image, 300)).text
+
+
+def test_table_scan_becomes_csv_columns(engine, tmp_path):
+    source = tmp_path / "検査結果.jpg"
+    render_lines(TABLE).save(source, dpi=(300, 300))
+    result = process_file(source, Settings(output_format="csv"), engine)
+    with open(result.output, encoding="utf-8-sig", newline="") as f:
+        rows = [row[2:5] for row in list(csv.reader(f))[1:]]
+    assert rows[0] == ["検査項目", "結果", "単位"]
+    assert rows[1][0] == "血糖" and rows[1][1] == "98"
+
+
+def test_scanned_pdf_to_searchable_pdf(engine, tmp_path):
+    source = tmp_path / "紹介状.pdf"
+    _save_scan_pdf(render_lines(LETTER), source)
+    result = process_file(source, Settings(output_format="pdf", pdf_mode="searchable"), engine)
+    with pymupdf.open(result.output) as doc:
+        assert doc.page_count == 1
+        assert "山田太郎" in doc[0].get_text().replace(" ", "")
+        # 元の画像も残っている
+        assert doc[0].get_images()
+
+
+def test_cli_folder_to_txt(tmp_path, capsys):
+    render_lines(LETTER).save(tmp_path / "a.jpg")
+    render_lines(TABLE).save(tmp_path / "b.png")
+    (tmp_path / "memo.docx").write_bytes(b"x")  # 対象外は無視される
+    out = tmp_path / "out"
+    assert cli_main([str(tmp_path), "-f", "txt", "-o", str(out)]) == 0
+    assert sorted(p.name for p in out.iterdir()) == ["a.txt", "b.txt"]
+    assert "山田太郎" in (out / "a.txt").read_text(encoding="utf-8-sig")
+
+
+def test_missing_language_data_is_explained():
+    with pytest.raises(OcrError, match="xyz.traineddata"):
+        OcrEngine(lang="jpn+xyz")
+
+
+def test_missing_tesseract_is_explained(monkeypatch):
+    monkeypatch.setattr("scantext.ocr.find_tesseract", lambda configured="": None)
+    with pytest.raises(OcrError, match="見つかりません"):
+        OcrEngine()
