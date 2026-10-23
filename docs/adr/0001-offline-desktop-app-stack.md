@@ -58,5 +58,5 @@ Python (tkinter の画面) と Tesseract OCR を使い、PyInstaller で **exe�
 
 ## Action Items
 1. [ ] GitHub の権限を直して push し、CI で Windows 版を作る
-2. [ ] 実機 (Windows 11) で起動・速度・日本語表示・コピー＆貼り付けを確認 (docs/TEST_PLAN.md の手動確認項目)
+2. [ ] 実機 (Windows 10 IoT Enterprise LTSC) で起動・速度・日本語表示・コピー＆貼り付けを確認 (docs/TEST_PLAN.md の手動確認項目)
 3. [ ] 院内のシステム担当に、フォルダ持ち込みと exe 実行の可否を確認

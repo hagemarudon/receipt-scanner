@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## これは何か
 
-電子カルテが入った**オフラインの Windows PC** で、スキャンした書類 (JPG / PDF) を文字起こしして .txt / .csv / .pdf に保存するデスクトップアプリ (パッケージ名 `scantext`、exe 名 `ScanText`)。利用者はパソコンに詳しくない医師 (開発者の父)。コード中のコメント・画面の文言・文書はすべて日本語で書く。
+電子カルテが入った**オフラインの Windows PC** (Windows 10 IoT Enterprise LTSC 21H2、Core i7-10700、メモリ 8GB、GPU なし) で、スキャンした書類 (JPG / PDF) を文字起こしして .txt / .csv / .pdf に保存するデスクトップアプリ (パッケージ名 `scantext`、exe 名 `ScanText`)。利用者はパソコンに詳しくない医師 (開発者の父)。コード中のコメント・画面の文言・文書はすべて日本語で書く。
 
 ## コマンド
 
