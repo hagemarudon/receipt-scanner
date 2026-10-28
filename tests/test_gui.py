@@ -128,3 +128,18 @@ def test_start_with_no_files_shows_message(app, monkeypatch):
     monkeypatch.setattr(gui.messagebox, "showinfo", lambda title, message: shown.append(message))
     app.start()
     assert shown and not app._running
+
+
+def test_result_is_not_wrapped_so_it_looks_like_what_is_copied(app, sample_jpg, monkeypatch):
+    """折り返すと表の列がずれて見えるので、結果欄はコピーされる文字と同じ並びで出す。"""
+    text = "項目　　　　結果\n血糖　　　　98"
+    monkeypatch.setattr(gui, "OcrEngine", lambda *a, **k: FakeEngine(text=text))
+    app.add_paths([str(sample_jpg)])
+    app.start()
+    _wait_until_finished(app)
+    app.tree.selection_set(next(iter(app.files)))
+    app.root.update()
+
+    assert app.text.cget("wrap") == "none"
+    app.copy_text()
+    assert app.root.clipboard_get() == app.text.get("1.0", "end-1c") == text + "1"

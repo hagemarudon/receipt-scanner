@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytesseract
 
-from .layout import reading_order_text, table_rows, words_from_tesseract
+from .layout import layout_text, reading_order_text, table_rows, words_from_tesseract
 from .loader import PageImage
 
 WINDOWS_TESSERACT_PATHS = [
@@ -117,11 +117,12 @@ class OcrEngine:
             page.image, lang=self.lang, config=self._config(page), output_type=pytesseract.Output.DICT
         )
         words = words_from_tesseract(data)
-        text = reading_order_text(words)
         if self.vertical:
-            # 縦書きは「横に並んだ列」がないので、CSV は 1 行ずつにする
+            # 縦書きは「横に並んだ列」がないので、Tesseract の読む順のまま。CSV は 1 行ずつにする
+            text = reading_order_text(words)
             rows = [[line] for line in text.splitlines() if line]
         else:
+            text = layout_text(words)
             rows = table_rows(words)
         result = PageResult(text=text, rows=rows)
         if with_pdf:

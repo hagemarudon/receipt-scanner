@@ -5,8 +5,10 @@ import io
 
 import pymupdf
 import pytest
+from PIL import ImageDraw, ImageFilter
 
 from scantext.cli import main as cli_main
+from scantext.layout import BAR_CHARS, _text_width
 from scantext.loader import PageImage
 from scantext.ocr import OcrEngine, OcrError
 from scantext.processor import process_file
@@ -54,6 +56,28 @@ def test_table_scan_becomes_csv_columns(engine, tmp_path):
         rows = [row[2:5] for row in list(csv.reader(f))[1:]]
     assert rows[0] == ["検査項目", "結果", "単位"]
     assert rows[1][0] == "血糖" and rows[1][1] == "98"
+
+
+def _ruled_table_scan():
+    """罫線で囲んだ表を、少しぼかしてスキャンしたような画像にする。"""
+    image = render_lines(TABLE)
+    draw = ImageDraw.Draw(image)
+    columns = [60, 580, 1100, 1620]
+    top, pitch = 80 - 25, 97
+    for row in range(len(TABLE) + 1):
+        draw.line([(columns[0], top + row * pitch), (columns[-1], top + row * pitch)], fill="black", width=4)
+    for x in columns:
+        draw.line([(x, top), (x, top + len(TABLE) * pitch)], fill="black", width=4)
+    return image.filter(ImageFilter.GaussianBlur(1))
+
+
+def test_ruled_table_text_has_no_bars_and_columns_line_up(engine):
+    text = engine.recognize(PageImage(_ruled_table_scan(), 300)).text
+    assert not any(char in text for char in BAR_CHARS)
+    lines = {line.lstrip("　").split("　")[0]: line for line in text.splitlines() if line.strip()}
+    header, sugar = lines["検査項目"], lines["血糖"]
+    # 「結果」と「98」が同じ桁から始まる (等幅フォントに貼り付けたときに列がそろう)
+    assert _text_width(header[: header.index("結果")]) == _text_width(sugar[: sugar.index("98")])
 
 
 def test_scanned_pdf_to_searchable_pdf(engine, tmp_path):
