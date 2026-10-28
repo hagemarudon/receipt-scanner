@@ -378,7 +378,7 @@ class App:
         sheet.rowconfigure(0, weight=1)
         self.text = tk.Text(
             sheet,
-            wrap="char",
+            wrap="none",  # 折り返すと列がずれるので、コピーしたときと同じ並びで見せる
             height=8,
             font=(self.mono_family, 13),
             background=SHEET,
@@ -396,7 +396,9 @@ class App:
         self.text.grid(row=0, column=0, sticky="nsew")
         text_scroll = ttk.Scrollbar(sheet, orient="vertical", command=self.text.yview)
         text_scroll.grid(row=0, column=1, sticky="ns")
-        self.text.configure(yscrollcommand=text_scroll.set, state="disabled")
+        text_xscroll = ttk.Scrollbar(sheet, orient="horizontal", command=self.text.xview)
+        text_xscroll.grid(row=1, column=0, sticky="ew")
+        self.text.configure(yscrollcommand=text_scroll.set, xscrollcommand=text_xscroll.set, state="disabled")
 
         self.output_label = ttk.Label(frame, style="Muted.TLabel")
         self.output_label.grid(row=2, column=0, sticky="w", pady=(6, 0))

@@ -27,7 +27,9 @@ python tests/smoke_bundle.py dist/ScanText  # exe 化したものが実際に 3 
 流れは `gui.py` / `cli.py` → `processor.process_file` → `loader.iter_pages` (1 ページずつ `PageImage`) → `ocr.OcrEngine.recognize` (`PageResult`: text / rows / searchable_pdf) → `exporters.write_output`。
 
 - `layout.py` は Tesseract の `image_to_data` の単語位置だけから組み立てる純粋な処理で、OCR なしで単体テストできる
-  - TXT: Tesseract の段落・行の順を使い、広い空白は全角スペースで区切る。縦書きの行 (縦長) は上から下へ並べる
+  - TXT (横書き): Tesseract の行を縦位置で横一列にまとめ、セルの左端の位置に合わせて全角スペースで字下げする (等幅フォントに貼ると列がそろう)。行の間が広ければ空行
+  - TXT (縦書き): Tesseract の段落・行の順のまま。縦長の行は上から下へ並べる
+  - 表の罫線を読み違えた「|」「｜」「_]」などは文字として出さず、セルの区切りにだけ使う (`Word.rule`)
   - CSV: 段組みを無視して縦位置で行をまとめ、セルの左端の位置で列をそろえる。縦書き (`jpn_vert`) のときは 1 行 1 セル
 - 1 ページにつき Tesseract を最大 3 回呼ぶ: 向き判定 (OSD)、`image_to_data`、PDF 出力時のみ `image_to_pdf_or_hocr`
 - 画面は処理を別スレッドで動かし、`queue` 経由でメインスレッドに渡す。Tk はメインスレッドからしか触らない

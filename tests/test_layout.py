@@ -1,6 +1,7 @@
 from scantext.layout import (
     Word,
     group_rows,
+    layout_text,
     reading_order_text,
     split_cells,
     table_rows,
@@ -112,3 +113,94 @@ def test_vertical_line_reads_top_to_bottom():
 def test_vertical_line_splits_on_large_vertical_gap():
     column = [w("氏名", 0, 0, width=40, height=80), w("山田", 0, 400, width=40, height=80)]
     assert [c.text for c in split_cells(column)] == ["氏名", "山田"]
+
+
+def _data(*words):
+    """(文字, left, top, width, height, line) の並びを image_to_data の形にする。"""
+    n = len(words)
+    return {
+        "level": [5] * n,
+        "text": [x[0] for x in words],
+        "conf": [90] * n,
+        "left": [x[1] for x in words],
+        "top": [x[2] for x in words],
+        "width": [x[3] for x in words],
+        "height": [x[4] for x in words],
+        "block_num": [1] * n,
+        "par_num": [1] * n,
+        "line_num": [x[5] if len(x) > 5 else 1 for x in words],
+    }
+
+
+def test_table_border_read_as_bar_is_not_output_but_splits_cells():
+    """表の縦の罫線が「|」「｜」と読まれても文字としては出さず、列の区切りにする。"""
+    data = _data(("氏名", 0, 0, 80, 40), ("|", 90, -10, 6, 60), ("山田", 110, 0, 80, 40), ("｜", 200, -10, 6, 60))
+    words = words_from_tesseract(data)
+    assert [c.text for c in split_cells(words)] == ["氏名", "山田"]
+    assert reading_order_text(words) == "氏名　山田"
+
+
+def test_bar_stuck_to_letters_is_cut_off():
+    words = words_from_tesseract(_data(("|氏名|山田|", 0, 0, 300, 40)))
+    assert [w.text for w in words if not w.rule] == ["氏名", "山田"]
+    assert [c.text for c in split_cells(words)] == ["氏名", "山田"]
+
+
+def test_scraps_of_ruled_lines_are_dropped():
+    words = words_from_tesseract(_data(("_]", 0, 0, 30, 40), ("[", 50, 0, 10, 40), ("70-109", 100, 0, 240, 40)))
+    assert [c.text for c in split_cells(words)] == ["70-109"]
+
+
+def test_tall_bar_does_not_make_a_line_look_vertical():
+    words = [w("血糖", 0, 0), w("98", 200, 0), Word("|", 150, -200, 4, 600, rule=True)]
+    assert [c.text for c in split_cells(words)] == ["血糖", "98"]
+
+
+def test_border_spanning_rows_separates_cells_in_every_row():
+    """何行にもまたがる縦線 1 本でも、どの行でも列の区切りになる。"""
+    words = [
+        w("項目", 0, 0),
+        w("結果", 100, 0),
+        w("血糖", 0, 100),
+        w("98", 100, 100),
+        Word("|", 90, -10, 4, 160, rule=True),
+    ]
+    assert table_rows(words) == [["項目", "結果"], ["血糖", "98"]]
+
+
+def test_layout_text_keeps_table_rows_together_and_aligns_columns():
+    """Tesseract が表の列を別ブロックとして読んでも、行ごとにまとめ、列を全角スペースでそろえる。"""
+    words = [
+        w("検査結果", 0, 0),
+        w("項目", 0, 120, block=2),
+        w("血糖", 0, 180, block=2, line=2),
+        w("結果", 400, 120, block=3),
+        w("98", 400, 180, width=40, block=3, line=2),
+        w("備考", 0, 240, block=4),
+        w("なし", 400, 242, block=5),
+    ]
+    assert layout_text(words).splitlines() == [
+        "検査結果",
+        "",
+        "項目　　　　　　　　結果",
+        "血糖　　　　　　　　98",
+        "備考　　　　　　　　なし",
+    ]
+
+
+def test_layout_text_pads_half_width_text_back_onto_the_grid():
+    words = [
+        w("HbA1c", 0, 0, width=100),
+        w("5.6", 400, 0, width=60),
+        w("項目", 0, 60, line=2),
+        w("結果", 400, 60, line=2),
+    ]
+    first, second = layout_text(words).splitlines()
+    assert first == "HbA1c " + "　" * 7 + "5.6"
+    assert second == "項目　　　　　　　　結果"
+
+
+def test_layout_text_indents_by_position_and_ignores_rules():
+    words = [w("令和6年", 400, 0), w("以上", 0, 60, line=2), Word("|", 0, 0, 4, 100, rule=True)]
+    assert layout_text(words) == "　　　　　　　　　　令和6年\n以上"
+    assert layout_text([]) == ""
